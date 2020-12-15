@@ -1,0 +1,111 @@
+---
+- hosts: all
+  gather_facts: False
+  become: True
+
+  vars: 
+    app_dep_runit: https://packagecloud.io/imeyer/runit/packages/el/7/runit-2.1.1-7.el7.centos.x86_64.rpm/download.rpm
+    app_src_zip_file: application.zip
+    app_dest_root_dir: /opt/application
+    app_dest_runit_link: /etc/service/application
+    nginx_src_conf_file: config/nginx.conf
+    nginx_src_ssl_crt: files/self-signed.crt
+    nginx_src_ssl_key: files/self-signed.key
+    nginx_dest_conf_file: /etc/nginx/nginx.conf
+    nginx_dest_ssl_crt: /etc/nginx/ssl/app.crt
+    nginx_dest_ssl_key: /etc/nginx/ssl/app.key
+    nginx_dest_def_conf_file: /etc/nginx/conf.d/default.conf
+    nginx_dest_logs_dir: /etc/nginx/logs
+    nginx_dest_ssl_dir: /etc/nginx/ssl
+
+  tasks:
+
+    - include: tasks/deps.yml
+
+    - name: nginx, install
+      yum:
+        name: nginx
+        state: latest
+
+    - name: runit, install
+      yum:
+        name: "{{ app_dep_runit }}"
+        state: present
+
+    - name: nginx, set directory for logs
+      file:
+        path: "{{ nginx_dest_logs_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: 0775
+
+    - name: nginx, set directory for ssl 
+      file:
+        path: "{{ nginx_dest_ssl_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: nginx, copy conf
+      copy:
+        src: "{{ nginx_src_conf_file }}"
+        dest: "{{ nginx_dest_conf_file }}"
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: nginx, copy crt
+      copy:
+        src: "{{ nginx_src_ssl_crt }}"
+        dest: "{{ nginx_dest_ssl_crt }}"
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: nginx, set key
+      copy:
+        src: "{{ nginx_src_ssl_key }}"
+        dest: "{{ nginx_dest_ssl_key }}"
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: application, set directory for service
+      file:
+        path: /etc/service
+        state: directory
+        owner: root
+        group: root
+        mode: 0774
+
+    - name: application, copy src
+      unarchive:
+        src: "{{ app_src_zip_file }}"
+        dest: /opt
+
+    - name: application, fix permissions
+      file:
+        path: "{{ app_dest_root_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: 0774
+
+    - name: application, create symbolic link
+      file:
+        src: "{{ app_dest_root_dir }}"
+        dest: "{{ app_dest_runit_link }}"
+        owner: root
+        group: root
+        state: link
+
+    - name: application, start
+      shell: |
+        runsvdir /etc/service &
+
+    - name: nginx, start
+      service:
+        name: nginx
+        state: reloaded
